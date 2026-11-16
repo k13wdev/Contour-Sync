@@ -234,7 +234,7 @@ test('JSON config validates unknown fields and resolves relative paths against c
 
 test('CLI init, help and strict arguments work without dependencies', async (t) => {
   const f = await fixture(t);
-  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: f.root, env, encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: f.root, env: { ...env, CONTOUR_SYNC_CONFIG: path.join(f.root, 'contour-sync.json') }, encoding: 'utf8' });
   assert.equal(run('--help').status, 0);
   assert.equal(run('--version').stdout.trim(), '2.0.0');
   assert.equal(run('init').status, 0);

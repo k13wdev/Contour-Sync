@@ -2,30 +2,92 @@
 
 CLI для переноса снимка кода из внешнего Git-репозитория или локальной папки во внутренний Git-репозиторий. История внутреннего репозитория сохраняется; результат — изменения в рабочей папке для просмотра и коммита.
 
-**Обычный JavaScript, стандартная библиотека Node.js, ноль зависимостей.** Не нужны TypeScript, сборка, `npm install`, `sudo` или права записи в каталог установки.
+**Обычный JavaScript, стандартная библиотека Node.js, ноль зависимостей.** Не нужны TypeScript, сборка на рабочей машине или скачивание зависимостей из реестра.
 
-## Быстрый запуск
+## Рекомендуемая установка в контуре
 
-Требуются **Node.js >=22.13.0** и **Git** в `PATH`.
+Требуются **Node.js >=22.13.0**, **npm** для установки пакета и **Git** в `PATH` для работы. Публичный npm и GitHub для установки из архива не нужны.
 
-```bash
-node bin/csync.js init
-```
-
-Заполните созданный `contour-sync.json`, затем:
+Перенесите в контур `contour-sync-2.0.0.tgz` и `contour-sync-2.0.0.tgz.sha256`. На Linux/macOS проверьте контрольную сумму в каталоге с этими файлами:
 
 ```bash
-node bin/csync.js doctor --project frontend
-node bin/csync.js sync --project frontend
+# Linux
+sha256sum --check contour-sync-2.0.0.tgz.sha256
+# macOS
+shasum -a 256 --check contour-sync-2.0.0.tgz.sha256
 ```
 
-`sync` спросит исходную ветку, подготовит снимок, выведет список изменений и запросит `yes` перед применением. Запуск без аргументов открывает этот сценарий в интерактивном терминале; при перенаправленном вводе показывает справку.
+Если используемая установка Node уже разрешает глобальную установку без администратора:
 
-Можно использовать `npm start -- <команда>` или установить команду `csync` через `npm link` из каталога утилиты. Это необязательно: прямой запуск через `node` работает без установки и сетевого доступа.
+```bash
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./contour-sync-2.0.0.tgz
+csync --version
+```
+
+Если появляется `EACCES`, установите в свой каталог без `sudo`:
+
+```bash
+npm install --global --prefix "$HOME/.local" --offline --ignore-scripts --no-audit --no-fund ./contour-sync-2.0.0.tgz
+export PATH="$HOME/.local/bin:$PATH"
+csync --version
+```
+
+Добавьте строку `export PATH="$HOME/.local/bin:$PATH"` один раз в `~/.zshrc` или `~/.bashrc`, чтобы команда работала в новых терминалах. При недоступном npm-кеше задайте `--cache /путь/к/доступному/каталогу` в команде установки.
+
+На Windows (PowerShell), без прав администратора:
+
+```powershell
+Get-FileHash .\contour-sync-2.0.0.tgz -Algorithm SHA256
+# Сравните Hash со значением в contour-sync-2.0.0.tgz.sha256.
+$prefix = Join-Path $env:LOCALAPPDATA "ContourSync"
+npm install --global --prefix $prefix --offline --ignore-scripts --no-audit --no-fund .\contour-sync-2.0.0.tgz
+$env:Path = "$prefix;$env:Path"
+csync.cmd --version
+```
+
+Добавьте каталог `$prefix` в пользовательский `PATH` через настройки Windows. Если политика PowerShell запрещает `.ps1`, используйте `csync.cmd`; менять execution policy не требуется.
+
+## Первый запуск
+
+```bash
+csync init
+# Команда покажет, где создан JSON. Заполните targetDir, repo и preserve.
+csync doctor --project frontend
+csync sync --project frontend
+```
+
+Настройки общие для пользователя, поэтому запускать `csync` можно из любой папки. `sync` спросит исходную ветку, подготовит снимок, выведет список изменений и запросит `yes` перед применением. Запуск без аргументов открывает этот сценарий в интерактивном терминале; при перенаправленном вводе показывает справку.
+
+## Если установка пакетов запрещена
+
+Распакуйте архив в доступную папку и запускайте через Node.js:
+
+```bash
+mkdir -p ./contour-sync-portable
+tar -xzf ./contour-sync-2.0.0.tgz -C ./contour-sync-portable
+node ./contour-sync-portable/package/bin/csync.js --help
+node ./contour-sync-portable/package/bin/csync.js init
+```
+
+В этом варианте npm не нужен. Вместо `csync` в примерах ниже используйте `node /абсолютный/путь/package/bin/csync.js`. Обычный запуск не пишет в каталог установки.
+
+## Сборка пакета для переноса
+
+На машине с исходниками:
+
+```bash
+npm run pack:release
+```
+
+Команда проверит синтаксис, выполнит тесты, соберёт `dist/contour-sync-2.0.0.tgz` и запишет рядом SHA-256. Тест установки использует пустой npm-кеш, офлайн-режим и недоступный registry, затем проверяет установленную команду, `init`, `doctor`, применение и восстановление.
+
+В архив входят только CLI, модули, пример настроек, README и package.json. Тесты, скрипты разработки, Git, личные настройки и архивы в пакет не включаются. Пакет не содержит зависимостей и install/postinstall-скриптов.
+
+Для обновления повторите установку нового `.tgz` с тем же `--prefix`. Пользовательские настройки находятся вне пакета и сохраняются. Для многих пользователей администратор может разместить тот же архив во внутреннем hosted npm-репозитории Nexus; тогда установка выполняется из этого реестра по принятой в организации схеме. Публиковать пакет в публичный npm для работы в контуре не требуется.
 
 ## Настройки JSON
 
-`init` создаёт пример, существующий файл не перезаписывает. По умолчанию используется `contour-sync.json` в текущей папке. Другой путь: `--config /path/to/config.json` или `CONTOUR_SYNC_CONFIG`.
+`init` создаёт пример, существующий файл не перезаписывает. По умолчанию: Linux/macOS — `~/.config/contour-sync/config.json` (учитывается `XDG_CONFIG_HOME`), Windows — `%APPDATA%/ContourSync/config.json`. Путь можно переопределить через `--config /path/to/config.json` или `CONTOUR_SYNC_CONFIG`. Настройки в рабочей папке автоматически не подхватываются: для них укажите `--config`.
 
 ```json
 {
@@ -69,10 +131,10 @@ node bin/csync.js sync --project frontend
 Для раздельной проверки:
 
 ```bash
-node bin/csync.js plan --project frontend --source release/1.2
+csync plan --project frontend --source release/1.2
 # Команда выведет абсолютный путь к plan.json.
-node bin/csync.js diff --plan /path/to/plan.json
-node bin/csync.js apply --plan /path/to/plan.json
+csync diff --plan /path/to/plan.json
+csync apply --plan /path/to/plan.json
 ```
 
 `plan` не меняет целевой репозиторий. Он создаёт отдельную папку со снимком и JSON-манифестом. `diff` показывает содержимое изменений через `git diff --no-index`; внешние diff-программы и textconv отключены.
@@ -83,7 +145,7 @@ node bin/csync.js apply --plan /path/to/plan.json
 
 ```bash
 git -C /work/internal/frontend switch -c import/frontend-update
-node bin/csync.js plan --project frontend --target import/frontend-update
+csync plan --project frontend --target import/frontend-update
 ```
 
 `--target` проверяет ожидаемую текущую ветку. Это позволяет не переключать рабочую папку неожиданно и не переносить локальные изменения между ветками.
@@ -91,7 +153,7 @@ node bin/csync.js plan --project frontend --target import/frontend-update
 Предварительный просмотр через короткий сценарий:
 
 ```bash
-node bin/csync.js sync --project frontend --dry-run
+csync sync --project frontend --dry-run
 ```
 
 ## Изолированные контуры
@@ -99,9 +161,9 @@ node bin/csync.js sync --project frontend --dry-run
 Если внешний Git недоступен из внутреннего контура, подготовьте и перенесите полную папку проекта разрешённым у вас способом:
 
 ```bash
-node bin/csync.js plan --project backend --from /work/import/backend
-node bin/csync.js diff --plan /path/to/plan.json
-node bin/csync.js apply --plan /path/to/plan.json
+csync plan --project backend --from /work/import/backend
+csync diff --plan /path/to/plan.json
+csync apply --plan /path/to/plan.json
 ```
 
 `--from` работает с каталогом, а не с архивом. `.git` источника не переносится. Утилита не распаковывает архивы и не выполняет код из снимка. Проверьте, что каталог содержит полный проект: неполный снимок будет означать удаление отсутствующих незащищённых файлов. Полностью пустой источник отклоняется.
@@ -116,14 +178,14 @@ node bin/csync.js apply --plan /path/to/plan.json
 4. системный временный каталог `os.tmpdir()`.
 
 ```bash
-node bin/csync.js doctor --project frontend --temp-dir /work/tmp
-node bin/csync.js sync --project frontend --temp-dir /work/tmp
+csync doctor --project frontend --temp-dir /work/tmp
+csync sync --project frontend --temp-dir /work/tmp
 ```
 
 Папка должна существовать и быть доступна для записи. Не размещайте планы внутри источника или целевого проекта. Для постоянного хранения укажите новую папку плана:
 
 ```bash
-node bin/csync.js plan --project frontend --output /work/transfers/frontend-2026-11-16
+csync plan --project frontend --output /work/transfers/frontend-2026-11-16
 ```
 
 Родитель `/work/transfers` должен существовать; сам каталог плана создаётся утилитой и не должен уже существовать.
@@ -135,7 +197,7 @@ node bin/csync.js plan --project frontend --output /work/transfers/frontend-2026
 Перед первой записью `apply` создаёт и проверяет копию управляемых файлов. Путь выводится **до начала изменений**.
 
 ```bash
-node bin/csync.js restore --backup /path/to/backup-XXXXXX/backup.json
+csync restore --backup /path/to/backup-XXXXXX/backup.json
 ```
 
 При обычной ошибке применения выполняется попытка автоматического восстановления. `Ctrl+C`/`SIGTERM` во время применения обрабатываются с попыткой восстановления. При `SIGKILL`, падении ОС или потере питания автоматическое завершение невозможно: сохраняются резервная копия и маркер блокировки.
@@ -165,9 +227,9 @@ npm ci --ignore-scripts
 ## Скрипты и диагностика
 
 ```bash
-node bin/csync.js projects
-node bin/csync.js doctor --project frontend --json
-node bin/csync.js sync --project frontend --source main --yes --json
+csync projects
+csync doctor --project frontend --json
+csync sync --project frontend --source main --yes --json
 ```
 
 `--yes` относится только к `sync`. В неинтерактивном запуске применение через `sync` требует `--yes`; без него сохраняется план и возвращается ошибка с инструкцией. `--json` отключает вопросы и выдаёт результат в stdout. Сообщение о создании резервной копии и ошибки идут в stderr. Коды завершения: `0` — успех, `1` — ошибка, `130`/`143` — прерывание сигналом.
@@ -189,14 +251,18 @@ npm test
 npm run check
 ```
 
+Из исходников CLI также запускается напрямую: `node bin/csync.js --help`.
+
 Тесты используют встроенный `node:test` и настоящие временные локальные Git-репозитории. Сеть и установка пакетов не нужны.
 
 ```text
-bin/csync.js                CLI, вопросы, аргументы, вывод
+bin/csync.js                  CLI, вопросы, аргументы, вывод
 lib/config.js                  JSON, валидация, правила сохранения
 lib/git.js                     Git без shell-интерполяции
 lib/files.js                   Сканирование, SHA-256, файловые операции
 lib/sync.js                    Планы, снимки, diff, backup, apply, restore
 config/contour-sync.example.json   Пример настроек
-test/sync.test.js              Интеграционные проверки
+scripts/pack.js               Сборка архива и SHA-256
+test/package.test.js          Проверка офлайн-установки
+test/sync.test.js             Интеграционные проверки
 ```

@@ -9,6 +9,7 @@ import { git, inspectTarget } from '../lib/git.js';
 import { assertWritable, inventory } from '../lib/files.js';
 import { createPlan, applyPlan, restoreBackup, temporaryRoot, diffPlan } from '../lib/sync.js';
 
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const cancellation = new AbortController();
 const shellArg = (value) => process.platform === 'win32' ? JSON.stringify(value) : `'${value.replaceAll("'", "'\\''")}'`;
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -18,9 +19,9 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-const HELP = `Contour Sync 2.0.0 — перенос кода с предварительным просмотром
+const HELP = `Contour Sync ${version} — перенос кода с предварительным просмотром
 
-Запуск: node bin/csync.js <команда> [параметры]
+Запуск: csync <команда> [параметры]
 
   init       Создать пример настроек (существующий файл не перезаписывается)
   projects   Показать настроенные проекты
@@ -31,7 +32,7 @@ const HELP = `Contour Sync 2.0.0 — перенос кода с предвари
   sync       Подготовить план и запросить подтверждение применения
   restore    Восстановить файлы из резервной копии
 
-  --config <файл>       Настройки (по умолчанию contour-sync.json в текущем каталоге)
+  --config <файл>       Настройки (по умолчанию пользовательский конфиг Contour Sync)
   --project <имя>       Имя проекта из настроек
   --source <ветка>      Исходная ветка (по умолчанию main)
   --target <ветка>      Ожидаемая текущая целевая ветка; переключения нет
@@ -47,14 +48,14 @@ const HELP = `Contour Sync 2.0.0 — перенос кода с предвари
   --version, -v        Версия
 
 Примеры:
-  node bin/csync.js init
-  node bin/csync.js doctor --project frontend
-  node bin/csync.js plan --project frontend --source main
-  node bin/csync.js apply --plan /path/to/plan.json
-  node bin/csync.js sync --project frontend --from /path/to/snapshot
-  node bin/csync.js restore --backup /path/to/backup.json
+  csync init
+  csync doctor --project frontend
+  csync plan --project frontend --source main
+  csync apply --plan /path/to/plan.json
+  csync sync --project frontend --from /path/to/snapshot
+  csync restore --backup /path/to/backup.json
 
-Требования: Node.js >=22.13.0 и Git. npm install не нужен.
+Требования: Node.js >=22.13.0 и Git. Сторонних зависимостей нет.
 `;
 
 function parse() {
@@ -119,14 +120,14 @@ function printPlan(result, json) {
   for (const operation of operations) console.log(`  ${labels[operation.action]} ${JSON.stringify(operation.path)}`);
   console.log(`Изменений: ${operations.length}. Замен адресов registry: ${plan.registryChanges}.`);
   console.log(`План: ${filename}`);
-  console.log(`Посмотреть diff: node bin/csync.js diff --plan ${shellArg(filename)}`);
-  console.log(`Применить: node bin/csync.js apply --plan ${shellArg(filename)}`);
+  console.log(`Посмотреть diff: csync diff --plan ${shellArg(filename)}`);
+  console.log(`Применить: csync apply --plan ${shellArg(filename)}`);
 }
 
 async function main() {
   const { command, options } = parse();
   if (command === 'help') { console.log(HELP); return; }
-  if (command === 'version') { console.log('2.0.0'); return; }
+  if (command === 'version') { console.log(version); return; }
   if (command === 'init') {
     const destination = path.resolve(options.config || defaultConfig());
     const sample = await readFile(new URL('../config/contour-sync.example.json', import.meta.url));
@@ -145,7 +146,7 @@ async function main() {
   if (command === 'apply') {
     if (!options.plan) throw new Error('Укажите --plan <plan.json>');
     const result = await applyPlan(options.plan, { signal: cancellation.signal });
-    console.log(options.json ? JSON.stringify(result) : `Применено изменений: ${result.operations.length}. Проверьте git diff и git status.\n${result.backup ? `Восстановление: node bin/csync.js restore --backup ${shellArg(result.backup)}` : 'Файлы уже совпадают.'}`);
+    console.log(options.json ? JSON.stringify(result) : `Применено изменений: ${result.operations.length}. Проверьте git diff и git status.\n${result.backup ? `Восстановление: csync restore --backup ${shellArg(result.backup)}` : 'Файлы уже совпадают.'}`);
     return;
   }
   if (command === 'restore') {
