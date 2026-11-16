@@ -1,0 +1,26 @@
+{
+  "name": "contour-sync",
+  "version": "2.0.0",
+  "description": "Reviewable code synchronization between Git workspaces",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "csync": "bin/csync.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node bin/csync.js",
+    "test": "node --test",
+    "check": "node --check bin/csync.js && node --check lib/config.js && node --check lib/files.js && node --check lib/git.js && node --check lib/sync.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/k13wdev/Contour-Sync.git"
+  },
+  "homepage": "https://github.com/k13wdev/Contour-Sync#readme",
+  "bugs": {
+    "url": "https://github.com/k13wdev/Contour-Sync/issues"
+  }
+}
