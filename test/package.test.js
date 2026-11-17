@@ -27,7 +27,7 @@ test('tarball installs globally offline with an empty cache and runs outside the
   }));
   assert.deepEqual(packed.files.map((file) => file.path).sort(), [
     'README.md', 'bin/csync.js', 'config/contour-sync.example.json',
-    'lib/config.js', 'lib/files.js', 'lib/git.js', 'lib/sync.js', 'package.json',
+    'lib/branches.js', 'lib/config.js', 'lib/files.js', 'lib/git.js', 'lib/sync.js', 'package.json',
   ].sort());
   assert.equal(Object.keys(metadata.dependencies || {}).length, 0);
   assert.equal(Object.keys(metadata.devDependencies || {}).length, 0);
@@ -66,7 +66,9 @@ test('tarball installs globally offline with an empty cache and runs outside the
   await writeFile(path.join(source, 'app.txt'), 'new');
   await writeFile(config, JSON.stringify({ projects: { app: { targetDir: target } }, tempDir: temporary }));
   assert.equal(JSON.parse(run('doctor', '--json')).ok, true);
-  const applied = JSON.parse(run('sync', '--from', source, '--yes', '--json'));
+  git('-C', target, 'branch', 'import/update');
+  const applied = JSON.parse(run('sync', '--from', source, '--target', 'import/update', '--yes', '--json'));
+  assert.equal(git('-C', target, 'branch', '--show-current').trim(), 'import/update');
   assert.equal(await readFile(path.join(target, 'app.txt'), 'utf8'), 'new');
   run('restore', '--backup', applied.backup);
   assert.equal(await readFile(path.join(target, 'app.txt'), 'utf8'), 'old');

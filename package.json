@@ -1,6 +1,6 @@
 {
   "name": "contour-sync",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Reviewable code synchronization between Git workspaces",
   "type": "module",
   "bin": {
@@ -12,7 +12,7 @@
   "scripts": {
     "start": "node bin/csync.js",
     "test": "node --test",
-    "check": "node --check bin/csync.js && node --check lib/config.js && node --check lib/files.js && node --check lib/git.js && node --check lib/sync.js && node --check scripts/npm.js && node --check scripts/pack.js",
+    "check": "node --check bin/csync.js && node --check lib/config.js && node --check lib/files.js && node --check lib/git.js && node --check lib/sync.js && node --check scripts/npm.js && node --check scripts/pack.js && node --check lib/branches.js",
     "pack:release": "npm run check && npm test && node scripts/pack.js",
     "prepublishOnly": "npm run check && npm test"
   },

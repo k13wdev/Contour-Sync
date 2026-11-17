@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { chooseBranches } from '../lib/branches.js';
 import { defaultConfig, loadConfig } from '../lib/config.js';
 import { git, inspectTarget } from '../lib/git.js';
 import { assertWritable, inventory } from '../lib/files.js';
@@ -34,8 +35,8 @@ const HELP = `Contour Sync ${version} — перенос кода с предв�
 
   --config <файл>       Настройки (по умолчанию пользовательский конфиг Contour Sync)
   --project <имя>       Имя проекта из настроек
-  --source <ветка>      Исходная ветка (по умолчанию main)
-  --target <ветка>      Ожидаемая текущая целевая ветка; переключения нет
+  --source <ветка>      Откуда: ветка внешнего репозитория (без значения по умолчанию)
+  --target <ветка>      Куда: локальная ветка; plan/sync переключают, doctor проверяет
   --from <каталог>      Локальный снимок вместо клонирования Git
   --output <каталог>    Новая папка для плана, снимка и резервных копий
   --temp-dir <каталог>  Временный каталог (также CONTOUR_SYNC_TMP_DIR)
@@ -50,9 +51,9 @@ const HELP = `Contour Sync ${version} — перенос кода с предв�
 Примеры:
   csync init
   csync doctor --project frontend
-  csync plan --project frontend --source main
+  csync plan --project frontend --source develop --target import/update
   csync apply --plan /path/to/plan.json
-  csync sync --project frontend --from /path/to/snapshot
+  csync sync --project frontend --from /path/to/snapshot --target import/update
   csync restore --backup /path/to/backup.json
 
 Требования: Node.js >=22.13.0 и Git. Сторонних зависимостей нет.
@@ -157,9 +158,9 @@ async function main() {
   }
   const settings = await loadConfig(options.config);
   if (command === 'projects') {
-    const projects = settings.projects.map(({ name, targetDir, sourceBranch, repoUrl }) => ({ name, targetDir, sourceBranch, source: repoUrl ? 'git' : 'directory' }));
+    const projects = settings.projects.map(({ name, targetDir, repoUrl }) => ({ name, targetDir, source: repoUrl ? 'git' : 'directory' }));
     if (options.json) console.log(JSON.stringify(projects));
-    else for (const repo of projects) console.log(`${repo.name}: ${repo.targetDir} (ветка источника: ${repo.sourceBranch})`);
+    else for (const repo of projects) console.log(`${repo.name}: ${repo.targetDir} (источник: ${repo.source})`);
     return;
   }
   const repo = await chooseProject(settings, options);
@@ -174,10 +175,12 @@ async function main() {
     console.log(options.json ? JSON.stringify(report) : `Проверки пройдены.\nNode: ${process.version}\nGit: ${version}\nПроект: ${repo.name}\nВетка: ${state.branch}\nВременный каталог: ${temp}\nСетевой доступ к Git/Nexus не проверялся.`);
     return;
   }
-  if (command === 'sync' && !options.from && !options.source && !options.json && stdin.isTTY && stdout.isTTY) {
-    options.source = await question('Исходная ветка', repo.sourceBranch);
-  }
-  const result = await createPlan(settings, repo, { ...options, signal: cancellation.signal });
+  const branches = await chooseBranches(repo, options, {
+    interactive: Boolean(stdin.isTTY && stdout.isTTY && !options.json),
+    ask: question,
+    print: (message) => console.log(message),
+  });
+  const result = await createPlan(settings, repo, { ...branches, signal: cancellation.signal });
   if (!options.json || command === 'plan' || options['dry-run'] || !options.yes || !result.operations.length) printPlan(result, options.json);
   if (command === 'plan' || options['dry-run'] || !result.operations.length) return;
   if (!options.yes) {

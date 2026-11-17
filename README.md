@@ -8,26 +8,26 @@ CLI для переноса снимка кода из внешнего Git-ре
 
 Требуются **Node.js >=22.13.0**, **npm** для установки пакета и **Git** в `PATH` для работы. Публичный npm и GitHub для установки из архива не нужны.
 
-Перенесите в контур `contour-sync-2.0.0.tgz` и `contour-sync-2.0.0.tgz.sha256`. На Linux/macOS проверьте контрольную сумму в каталоге с этими файлами:
+Перенесите в контур `contour-sync-3.0.0.tgz` и `contour-sync-3.0.0.tgz.sha256`. На Linux/macOS проверьте контрольную сумму в каталоге с этими файлами:
 
 ```bash
 # Linux
-sha256sum --check contour-sync-2.0.0.tgz.sha256
+sha256sum --check contour-sync-3.0.0.tgz.sha256
 # macOS
-shasum -a 256 --check contour-sync-2.0.0.tgz.sha256
+shasum -a 256 --check contour-sync-3.0.0.tgz.sha256
 ```
 
 Если используемая установка Node уже разрешает глобальную установку без администратора:
 
 ```bash
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./contour-sync-2.0.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./contour-sync-3.0.0.tgz
 csync --version
 ```
 
 Если появляется `EACCES`, установите в свой каталог без `sudo`:
 
 ```bash
-npm install --global --prefix "$HOME/.local" --offline --ignore-scripts --no-audit --no-fund ./contour-sync-2.0.0.tgz
+npm install --global --prefix "$HOME/.local" --offline --ignore-scripts --no-audit --no-fund ./contour-sync-3.0.0.tgz
 export PATH="$HOME/.local/bin:$PATH"
 csync --version
 ```
@@ -37,10 +37,10 @@ csync --version
 На Windows (PowerShell), без прав администратора:
 
 ```powershell
-Get-FileHash .\contour-sync-2.0.0.tgz -Algorithm SHA256
-# Сравните Hash со значением в contour-sync-2.0.0.tgz.sha256.
+Get-FileHash .\contour-sync-3.0.0.tgz -Algorithm SHA256
+# Сравните Hash со значением в contour-sync-3.0.0.tgz.sha256.
 $prefix = Join-Path $env:LOCALAPPDATA "ContourSync"
-npm install --global --prefix $prefix --offline --ignore-scripts --no-audit --no-fund .\contour-sync-2.0.0.tgz
+npm install --global --prefix $prefix --offline --ignore-scripts --no-audit --no-fund .\contour-sync-3.0.0.tgz
 $env:Path = "$prefix;$env:Path"
 csync.cmd --version
 ```
@@ -56,7 +56,7 @@ csync doctor --project frontend
 csync sync --project frontend
 ```
 
-Настройки общие для пользователя, поэтому запускать `csync` можно из любой папки. `sync` спросит исходную ветку, подготовит снимок, выведет список изменений и запросит `yes` перед применением. Запуск без аргументов открывает этот сценарий в интерактивном терминале; при перенаправленном вводе показывает справку.
+Настройки общие для пользователя, поэтому запускать `csync` можно из любой папки. `sync` спросит, откуда и куда переносить: имя ветки внешнего Git и существующую локальную ветку внутреннего репозитория. Затем подготовит снимок, выведет список изменений и запросит `yes` перед применением. Запуск без аргументов открывает этот сценарий в интерактивном терминале; при перенаправленном вводе показывает справку.
 
 ## Если установка пакетов запрещена
 
@@ -64,7 +64,7 @@ csync sync --project frontend
 
 ```bash
 mkdir -p ./contour-sync-portable
-tar -xzf ./contour-sync-2.0.0.tgz -C ./contour-sync-portable
+tar -xzf ./contour-sync-3.0.0.tgz -C ./contour-sync-portable
 node ./contour-sync-portable/package/bin/csync.js --help
 node ./contour-sync-portable/package/bin/csync.js init
 ```
@@ -79,7 +79,7 @@ node ./contour-sync-portable/package/bin/csync.js init
 npm run pack:release
 ```
 
-Команда проверит синтаксис, выполнит тесты, соберёт `dist/contour-sync-2.0.0.tgz` и запишет рядом SHA-256. Тест установки использует пустой npm-кеш, офлайн-режим и недоступный registry, затем проверяет установленную команду, `init`, `doctor`, применение и восстановление.
+Команда проверит синтаксис, выполнит тесты, соберёт `dist/contour-sync-3.0.0.tgz` и запишет рядом SHA-256. Тест установки использует пустой npm-кеш, офлайн-режим и недоступный registry, затем проверяет установленную команду, `init`, `doctor`, применение и восстановление.
 
 В архив входят только CLI, модули, пример настроек, README и package.json. Тесты, скрипты разработки, Git, личные настройки и архивы в пакет не включаются. Пакет не содержит зависимостей и install/postinstall-скриптов.
 
@@ -95,7 +95,6 @@ npm run pack:release
     "frontend": {
       "repo": "https://git.example.com/team/frontend.git",
       "targetDir": "/work/internal/frontend",
-      "sourceBranch": "main",
       "preserve": [".env.production", "src/internal-config.json", ".husky"],
       "registry": {
         "from": ["https://registry.npmjs.org"],
@@ -115,7 +114,6 @@ npm run pack:release
 - `projects`: проекты с уникальными именами из букв, цифр, `.`, `_` и `-`.
 - `repo`: Git URL или путь к Git-репозиторию; необязателен при использовании `--from`. Локальный путь к Git-источнику лучше указывать абсолютным.
 - `targetDir`: корень существующего внутреннего Git-репозитория с хотя бы одним коммитом. Относительный путь вычисляется от файла настроек.
-- `sourceBranch`: исходная ветка, по умолчанию `main`. Можно переопределить через `--source`.
 - `preserve`: общие и проектные правила объединяются. Точный путь с `/` действует от корня; одиночное имя действует на любой глубине. Каталог сохраняется целиком. Используйте `/` и на Windows. Glob-шаблоны не поддерживаются и считаются ошибкой.
 - `registry`: необязательная замена адресов npm-реестра, отдельно для каждого проекта.
 - `tempDir`: существующая папка для снимков и планов; относительный путь вычисляется от настроек.
@@ -131,24 +129,35 @@ npm run pack:release
 Для раздельной проверки:
 
 ```bash
-csync plan --project frontend --source release/1.2
+csync plan --project frontend --source release/1.2 --target import/frontend-update
 # Команда выведет абсолютный путь к plan.json.
 csync diff --plan /path/to/plan.json
 csync apply --plan /path/to/plan.json
 ```
 
-`plan` не меняет целевой репозиторий. Он создаёт отдельную папку со снимком и JSON-манифестом. `diff` показывает содержимое изменений через `git diff --no-index`; внешние diff-программы и textconv отключены.
+`plan` проверяет чистоту рабочего дерева и переключает внутренний репозиторий на выбранную существующую локальную ветку. Файлы этой ветки приводятся к её Git-состоянию обычной командой `git switch`; перенос снимка выполняется только при `apply`. План и снимок хранятся отдельно от проекта. `diff` показывает содержимое изменений через `git diff --no-index`; внешние diff-программы и textconv отключены.
 
 `apply` — явная команда применения, дополнительного подтверждения не запрашивает. Перед записью повторно проверяются ветка, HEAD, содержимое файлов и целостность снимка SHA-256. При изменениях после создания плана нужно подготовить новый.
 
-Утилита **не переключает ветки**. Подготовьте целевую ветку самостоятельно:
+Ветки выбираются при каждом запуске `plan` или `sync`. В интерактивном терминале утилита спрашивает:
 
-```bash
-git -C /work/internal/frontend switch -c import/frontend-update
-csync plan --project frontend --target import/frontend-update
+```text
+Откуда: имя ветки внешнего репозитория
+Куда: существующая локальная ветка внутреннего репозитория (номер или имя из списка)
 ```
 
-`--target` проверяет ожидаемую текущую ветку. Это позволяет не переключать рабочую папку неожиданно и не переносить локальные изменения между ветками.
+Значения исходной ветки по умолчанию нет. В скриптах и с `--json` указывайте `--source` и `--target` явно. При `--from` вместо исходной ветки используется каталог, нужен только `--target`. Уже указанные параметры повторно не запрашиваются.
+
+Целевая ветка должна существовать локально. Если нужна новая ветка, заранее создайте её от нужной внутренней базы, например `develop`:
+
+```bash
+git -C /work/internal/frontend branch import/frontend-update develop
+csync sync --project frontend --source release/1.2 --target import/frontend-update
+```
+
+Утилита проверяет несохранённые изменения **до переключения** и не делает автоматический stash. `--target` для `plan`/`sync` переключает существующую ветку, но не создаёт новую и не угадывает ветку по remote. Для `doctor --target` это только проверка текущей ветки. Перезапись игнорируемых локальных файлов при переключении запрещена.
+
+После успешной подготовки плана выбранная целевая ветка остаётся текущей, в том числе при `--dry-run` или отказе от применения. При ошибке подготовки выполняется попытка вернуть исходную ветку, если состояние репозитория позволяет сделать это без потери изменений. `apply`, `diff` и `restore` проверяют ветку из сохранённого плана и не переключают её автоматически.
 
 Предварительный просмотр через короткий сценарий:
 
@@ -161,7 +170,7 @@ csync sync --project frontend --dry-run
 Если внешний Git недоступен из внутреннего контура, подготовьте и перенесите полную папку проекта разрешённым у вас способом:
 
 ```bash
-csync plan --project backend --from /work/import/backend
+csync plan --project backend --from /work/import/backend --target import/backend-update
 csync diff --plan /path/to/plan.json
 csync apply --plan /path/to/plan.json
 ```
@@ -185,7 +194,7 @@ csync sync --project frontend --temp-dir /work/tmp
 Папка должна существовать и быть доступна для записи. Не размещайте планы внутри источника или целевого проекта. Для постоянного хранения укажите новую папку плана:
 
 ```bash
-csync plan --project frontend --output /work/transfers/frontend-2026-11-16
+csync plan --project frontend --source develop --target import/frontend-update --output /work/transfers/frontend-update
 ```
 
 Родитель `/work/transfers` должен существовать; сам каталог плана создаётся утилитой и не должен уже существовать.
@@ -229,7 +238,7 @@ npm ci --ignore-scripts
 ```bash
 csync projects
 csync doctor --project frontend --json
-csync sync --project frontend --source main --yes --json
+csync sync --project frontend --source develop --target import/frontend-update --yes --json
 ```
 
 `--yes` относится только к `sync`. В неинтерактивном запуске применение через `sync` требует `--yes`; без него сохраняется план и возвращается ошибка с инструкцией. `--json` отключает вопросы и выдаёт результат в stdout. Сообщение о создании резервной копии и ошибки идут в stderr. Коды завершения: `0` — успех, `1` — ошибка, `130`/`143` — прерывание сигналом.
@@ -243,6 +252,12 @@ csync sync --project frontend --source main --yes --json
 - В цели недопустимы detached HEAD, незавершённые merge/rebase и файлы с `skip-worktree`/`assume-unchanged`.
 - Поддерживается перенос ветки Git, а не произвольного commit SHA или архива.
 - Формат JSON новый; прежний `config/settings.json` автоматически не мигрируется.
+
+## Обновление с 2.x на 3.0
+
+Установите новый архив с тем же `--prefix`, что использовался при первой установке. В существующем JSON удалите `sourceBranch`: ветки больше не являются постоянными настройками проекта. Остальные настройки и расположение файла не меняются.
+
+Старый запуск `csync plan --project frontend` в скрипте теперь требует `--source` и `--target`; в интерактивном терминале появятся вопросы. Прежний `--target` только проверял текущую ветку, а в 3.0 команды `plan`/`sync` переключают её после проверки. Поэтому версия выпущена как 3.0.0.
 
 ## Разработка
 
@@ -258,7 +273,8 @@ npm run check
 ```text
 bin/csync.js                  CLI, вопросы, аргументы, вывод
 lib/config.js                  JSON, валидация, правила сохранения
-lib/git.js                     Git без shell-интерполяции
+lib/git.js                     Git, проверка и переключение веток без shell
+lib/branches.js                Интерактивный выбор источника и назначения
 lib/files.js                   Сканирование, SHA-256, файловые операции
 lib/sync.js                    Планы, снимки, diff, backup, apply, restore
 config/contour-sync.example.json   Пример настроек

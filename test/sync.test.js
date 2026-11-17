@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { loadConfig, DEFAULT_PRESERVE } from '../lib/config.js';
 import { createPlan, applyPlan, restoreBackup, patchRegistry } from '../lib/sync.js';
+import { chooseBranches } from '../lib/branches.js';
 import { inventory, sameInventory } from '../lib/files.js';
 
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const cli = fileURLToPath(new URL('../bin/csync.js', import.meta.url));
 const env = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_TERMINAL_PROMPT: '0' };
 function git(cwd, ...args) { return execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
@@ -28,9 +30,9 @@ async function fixture(t) {
   await put(source, '.gitignore', '.env\nnode_modules/\ncache/\n');
   await put(source, 'app.txt', 'new\n');
   await put(source, 'nested/new.txt', 'added\n');
-  const repo = { name: 'test', targetDir: target, repoUrl: source, sourceBranch: 'main', preserve: [...DEFAULT_PRESERVE] };
+  const repo = { name: 'test', targetDir: target, repoUrl: source, preserve: [...DEFAULT_PRESERVE] };
   const settings = { projects: [repo] };
-  const plan = (options = {}) => createPlan(settings, repo, { from: source, 'temp-dir': root, ...options });
+  const plan = (options = {}) => createPlan(settings, repo, { from: source, target: 'internal', 'temp-dir': root, ...options });
   return { root, target, source, repo, settings, plan };
 }
 
@@ -93,9 +95,9 @@ test('replacing a directory containing a preserved file is refused', async (t) =
   assert.equal(await readFile(path.join(f.target, 'protected/keep'), 'utf8'), 'keep');
 });
 
-test('dirty target and wrong target branch are refused before planning', async (t) => {
+test('dirty target and nonexistent target branch are refused before planning', async (t) => {
   const f = await fixture(t);
-  await assert.rejects(f.plan({ target: 'main' }), /Ожидалась ветка/);
+  await assert.rejects(f.plan({ target: 'main' }), /не существует/);
   await put(f.target, 'untracked', 'local');
   await assert.rejects(f.plan(), /незакоммиченные/);
   assert.equal((await readdir(f.root)).filter((name) => name.startsWith('contour-sync-')).length, 0);
@@ -180,7 +182,7 @@ test('registry transformation changes only matching resolved URLs and preserves 
 test('Git clone uses local source branch and records its exact commit', async (t) => {
   const f = await fixture(t);
   git(f.source, 'init', '-b', 'main'); await commit(f.source);
-  const p = await createPlan(f.settings, f.repo, { 'temp-dir': f.root });
+  const p = await createPlan(f.settings, f.repo, { source: 'main', target: 'internal', 'temp-dir': f.root });
   assert.equal(p.plan.origin.commit, git(f.source, 'rev-parse', 'HEAD'));
   assert.equal(p.plan.origin.branch, 'main');
   assert.equal(git(f.target, 'status', '--porcelain'), '');
@@ -236,7 +238,7 @@ test('CLI init, help and strict arguments work without dependencies', async (t) 
   const f = await fixture(t);
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: f.root, env: { ...env, CONTOUR_SYNC_CONFIG: path.join(f.root, 'contour-sync.json') }, encoding: 'utf8' });
   assert.equal(run('--help').status, 0);
-  assert.equal(run('--version').stdout.trim(), '2.0.0');
+  assert.equal(run('--version').stdout.trim(), version);
   assert.equal(run('init').status, 0);
   assert.equal(run('init').status, 1); // Never overwrite settings.
   assert.equal(run('plan', '--typo').status, 1);
@@ -250,7 +252,7 @@ test('CLI JSON sync emits one document and works from a read-only working direct
   await writeFile(config, JSON.stringify({ projects: { app: { targetDir: f.target } }, tempDir: f.root }));
   const readonly = path.join(f.root, 'readonly'); await mkdir(readonly); await chmod(readonly, 0o555);
   t.after(() => chmod(readonly, 0o755).catch(() => {}));
-  const result = spawnSync(process.execPath, [cli, 'sync', '--config', config, '--from', f.source, '--yes', '--json'], { cwd: readonly, env, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [cli, 'sync', '--config', config, '--from', f.source, '--target', 'internal', '--yes', '--json'], { cwd: readonly, env, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.ok(output.backup);
@@ -355,4 +357,119 @@ test('inherited Git environment cannot redirect the selected repository', async 
     if (previous === undefined) delete process.env.GIT_DIR;
     else process.env.GIT_DIR = previous;
   }
+});
+
+test('planning switches to an existing target branch and uses its files and HEAD', async (t) => {
+  const f = await fixture(t);
+  git(f.target, 'switch', '-c', 'destination');
+  await put(f.target, 'app.txt', 'destination version\n'); await commit(f.target);
+  const head = git(f.target, 'rev-parse', 'HEAD');
+  const before = await inventory(f.target, DEFAULT_PRESERVE);
+  git(f.target, 'switch', 'internal');
+  const p = await f.plan({ target: 'destination' });
+  assert.equal(git(f.target, 'branch', '--show-current'), 'destination');
+  assert.equal(git(f.target, 'status', '--porcelain'), '');
+  assert.equal(p.plan.head, head);
+  assert.ok(sameInventory(p.plan.before, before.entries));
+  const result = await applyPlan(p.filename);
+  assert.equal(await readFile(path.join(f.target, 'app.txt'), 'utf8'), 'new\n');
+  await restoreBackup(result.backup);
+  assert.equal(await readFile(path.join(f.target, 'app.txt'), 'utf8'), 'destination version\n');
+});
+
+test('dirty current branch is never switched or stashed automatically', async (t) => {
+  const f = await fixture(t); git(f.target, 'branch', 'destination');
+  await put(f.target, 'app.txt', 'my unfinished work');
+  await assert.rejects(f.plan({ target: 'destination' }), /незакоммиченные/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+  assert.equal(await readFile(path.join(f.target, 'app.txt'), 'utf8'), 'my unfinished work');
+});
+
+test('failed planning after switching returns to the original branch', async (t) => {
+  const f = await fixture(t); git(f.target, 'branch', 'destination');
+  f.repo.nexus = { externalRegistryUrls: ['https://registry.npmjs.org'], internalNexusUrl: 'https://nexus.example/npm' };
+  await put(f.source, 'package-lock.json', 'invalid JSON');
+  await assert.rejects(f.plan({ target: 'destination' }), /JSON/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+  assert.equal(git(f.target, 'status', '--porcelain'), '');
+  assert.equal((await readdir(f.root)).filter((name) => name.startsWith('contour-sync-')).length, 0);
+});
+
+test('failed cloning leaves the original branch selected', async (t) => {
+  const f = await fixture(t); git(f.target, 'branch', 'destination');
+  await assert.rejects(createPlan(f.settings, f.repo, { source: 'missing', target: 'destination', 'temp-dir': f.root }), /Git:/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+});
+
+test('remote-only destination is not guessed or created as a local branch', async (t) => {
+  const f = await fixture(t);
+  git(f.target, 'update-ref', 'refs/remotes/origin/remote-only', 'HEAD');
+  await assert.rejects(f.plan({ target: 'remote-only' }), /не существует/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+});
+
+test('branch switching does not overwrite ignored local files', async (t) => {
+  const f = await fixture(t);
+  git(f.target, 'switch', '-c', 'destination');
+  await put(f.target, '.env', 'tracked destination value');
+  git(f.target, 'add', '-f', '.env'); await commit(f.target);
+  git(f.target, 'switch', 'internal');
+  await put(f.target, '.env', 'local secret');
+  await assert.rejects(f.plan({ target: 'destination' }), /Git:/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+  assert.equal(await readFile(path.join(f.target, '.env'), 'utf8'), 'local secret');
+});
+
+test('source and target must be explicit; there is no main fallback', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(createPlan(f.settings, f.repo, { target: 'internal' }), /--source/);
+  await assert.rejects(createPlan(f.settings, f.repo, { source: 'main' }), /--target/);
+  await assert.rejects(createPlan(f.settings, f.repo, { from: f.source }), /--target/);
+  const filename = path.join(f.root, 'config.json');
+  await writeFile(filename, JSON.stringify({ projects: { app: { targetDir: f.target, sourceBranch: 'main' } } }));
+  await assert.rejects(loadConfig(filename), /удалите sourceBranch/);
+});
+
+test('interactive selection asks for source and local destination, retrying invalid input', async (t) => {
+  const f = await fixture(t); git(f.target, 'branch', 'destination');
+  const answers = ['', 'bad branch', 'release/1.2', 'unknown', 'destination'];
+  const questions = []; const messages = [];
+  const result = await chooseBranches(f.repo, {}, {
+    interactive: true, ask: async (message) => { questions.push(message); return answers.shift(); },
+    print: (message) => messages.push(message),
+  });
+  assert.equal(result.source, 'release/1.2');
+  assert.equal(result.target, 'destination');
+  assert.equal(questions.length, 5);
+  assert.ok(messages.some((message) => message.includes('destination')));
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
+});
+
+test('local snapshot skips the source-branch question and allows target selection by number', async (t) => {
+  const f = await fixture(t); const questions = [];
+  const result = await chooseBranches(f.repo, { from: f.source }, {
+    interactive: true, ask: async (message) => { questions.push(message); return '1'; }, print: () => {},
+  });
+  assert.equal(result.source, undefined);
+  assert.equal(result.target, 'internal');
+  assert.equal(questions.length, 1);
+});
+
+test('noninteractive selection requires flags and never asks questions', async (t) => {
+  const f = await fixture(t);
+  const ui = { interactive: false, ask: () => assert.fail('unexpected question'), print: () => assert.fail('unexpected output') };
+  await assert.rejects(chooseBranches(f.repo, {}, ui), /--source/);
+  await assert.rejects(chooseBranches(f.repo, { source: 'develop' }, ui), /--target/);
+  assert.deepEqual(await chooseBranches(f.repo, { source: 'develop', target: 'internal' }, ui), { source: 'develop', target: 'internal' });
+});
+
+test('CLI rejects missing branches before creating a plan or switching the destination', async (t) => {
+  const f = await fixture(t); const filename = path.join(f.root, 'config.json');
+  await writeFile(filename, JSON.stringify({ projects: { app: { targetDir: f.target, repo: f.source } }, tempDir: f.root }));
+  const run = (...args) => spawnSync(process.execPath, [cli, 'plan', '--config', filename, '--json', ...args], { env, encoding: 'utf8' });
+  const missingSource = run('--target', 'internal');
+  assert.equal(missingSource.status, 1); assert.match(JSON.parse(missingSource.stderr).error, /--source/);
+  const missingTarget = run('--from', f.source);
+  assert.equal(missingTarget.status, 1); assert.match(JSON.parse(missingTarget.stderr).error, /--target/);
+  assert.equal(git(f.target, 'branch', '--show-current'), 'internal');
 });

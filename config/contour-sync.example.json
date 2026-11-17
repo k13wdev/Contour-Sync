@@ -3,7 +3,6 @@
     "frontend": {
       "repo": "https://git.example.com/team/frontend.git",
       "targetDir": "/absolute/path/to/internal/frontend",
-      "sourceBranch": "main",
       "preserve": [".env.production", "src/internal-config.json", ".husky"],
       "registry": {
         "from": ["https://registry.npmjs.org"],
